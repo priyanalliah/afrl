@@ -1,0 +1,165 @@
+
+
+Unique Items Each User Interacted With
+
+```{r}
+
+library(dplyr)
+
+data <- read.csv("C:/Users/priya/Downloads/DLI_data_export_for_Priya.csv")
+
+# Count unique items per user
+unique_items_per_user <- data %>%
+  group_by(user_name) %>%
+  summarise(unique_items_count = n_distinct(foreign_trans_id))
+
+head(unique_items_per_user)
+```
+
+Average Performance for Each User
+
+
+```{r}
+library(dplyr)
+
+
+
+data <- read.csv("C:/Users/priya/Downloads/DLI_data_export_for_Priya.csv")
+
+# Convert the performance column to numeric 
+data$performance <- as.numeric(data$performance)
+
+# Calculate the average performance for each user in each task
+average_performance_task <- data %>%
+  group_by(user_name, task) %>%
+  summarise(average_performance = mean(performance, na.rm = TRUE))
+
+# Print the result for average performance in each task
+print(average_performance_task)
+
+# Calculate the average performance for each user in each chapter
+average_performance_chapter <- data %>%
+  group_by(user_name, chapter_name) %>%
+  summarise(average_performance = mean(performance, na.rm = TRUE))
+
+# Print the result for average performance in each chapter
+print(average_performance_chapter)
+```
+
+
+
+Items that Users have Answered at least 3 times Correctly 
+
+
+```{r}
+
+library(dplyr)
+
+data <- read.csv("C:/Users/priya/Downloads/DLI_data_export_for_Priya.csv")
+
+# Convert the is_correct_answer column to numeric or logical type
+# Assuming 'True' represents a correct answer and 'False' represents an incorrect answer
+data$is_correct_answer <- ifelse(data$is_correct_answer == "True", 1, 0)
+
+# Specify the user_name
+given_user <- "Bilal"
+
+# Filter the data for the given user
+user_data <- data %>% filter(user_name == given_user)
+
+# Identify items seen at least 3 times but never answered correctly
+items_seen_but_never_correct <- user_data %>%
+  group_by(foreign_trans_id) %>%
+  summarise(times_seen = n(),
+            correct_answers = sum(is_correct_answer)) %>%
+  filter(times_seen >= 3, correct_answers == 0)
+
+# Print the result
+print(items_seen_but_never_correct)
+```
+
+
+
+
+
+Longest Streak 
+```{r}
+
+library(dplyr)
+library(lubridate)
+
+
+data <- read.csv("C:/Users/priya/Downloads/DLI_data_export_for_Priya.csv")
+
+# Convert the date column to Date type
+data$date <- as.Date(data$date)
+
+# Filter to keep only relevant columns and remove duplicates
+data <- data %>% 
+  select(user_name, date) %>%
+  distinct()
+
+# Calculate streaks of consecutive days
+data <- data %>%
+  arrange(user_name, date) %>%
+  group_by(user_name) %>%
+  mutate(diff = c(0, diff(date)),
+         streak_id = cumsum(diff != 1 & diff != 0))
+
+# Calculate the length of each streak
+streaks <- data %>%
+  group_by(user_name, streak_id) %>%
+  summarise(streak_length = n())
+
+# Identify users with streaks of at least 3 days
+users_with_streaks <- streaks %>%
+  filter(streak_length >= 3) %>%
+  distinct(user_name)
+
+# Count the number of users with streaks of at least 3 days
+number_of_users_with_streaks <- nrow(users_with_streaks)
+
+# Find the longest streak for each user
+longest_streaks <- streaks %>%
+  group_by(user_name) %>%
+  summarise(longest_streak = max(streak_length))
+
+# Print the number of users with streaks of at least 3 days
+print(paste("Number of users with streaks of at least 3 days:", number_of_users_with_streaks))
+
+# Print the longest streak for each user
+print(longest_streaks)
+
+```
+
+
+
+Given a Certain Day what did Each User Achieve
+
+
+```{r}
+library(dplyr)
+library(readr)
+
+
+data <- read.csv("C:/Users/priya/Downloads/DLI_data_export_for_Priya.csv")
+
+# Convert the date column to Date type
+data$date <- as.Date(data$date)
+
+# Filter data up to the specified date
+filtered_data <- data %>%
+  filter(date <= as.Date("2024-01-08"))
+
+# Count interactions per user
+interaction_counts <- filtered_data %>%
+  group_by(user_name) %>%
+  summarise(interaction_count = n()) %>%
+  arrange(desc(interaction_count))
+
+# Display the top 10 users
+top_10_users <- head(interaction_counts, 10)
+print(top_10_users)
+
+```
+
