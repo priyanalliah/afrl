@@ -1,0 +1,191 @@
+# Install necessary packages if not already installed
+install.packages(c("shiny", "dplyr", "ggplot2", "DT", "tidyverse", "shinythemes", "plotly", "RColorBrewer"))
+
+# Load libraries
+library(shiny)
+library(dplyr)
+library(ggplot2)
+library(DT)
+library(tidyverse)
+library(shinythemes)
+library(plotly)
+library(RColorBrewer)
+
+# Load the data
+data <- read.csv("C:/Users/priya/Downloads/DLI_data_export_for_Priya.csv")
+
+# Define UI
+ui <- fluidPage(
+  # Link to Google Fonts for Montserrat
+  tags$head(
+    tags$link(rel = "stylesheet", href = "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap"),
+    tags$style(HTML("
+      body {
+        background-color: #003366; /* Dark Blue Background */
+        color: #f7f7f7;
+      }
+      .main-header {
+        background-color: #0275d8;
+        color: white;
+        text-align: center;
+        padding: 10px;
+        font-family: 'Montserrat', sans-serif;
+      }
+      .sidebar {
+        background-color: #004080; /* Slightly lighter blue for sidebar */
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #ddd;
+        font-family: 'Montserrat', sans-serif;
+      }
+      .main-panel {
+        background-color: #003366; /* Dark Blue Background */
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #ddd;
+        font-family: 'Montserrat', sans-serif;
+      }
+      .plot-title {
+        color: #0275d8;
+        font-size: 18px;
+        font-weight: bold;
+        text-align: center;
+        font-family: 'Montserrat', sans-serif;
+      }
+      .toggle-button {
+        display: none; /* Hide toggle button as it's not needed */
+      }
+    "))
+  ),
+  
+  titlePanel(
+    div(class = "main-header", "User Interaction Summary")
+  ),
+  
+  sidebarLayout(
+    sidebarPanel(
+      class = "sidebar",
+      selectInput("user", "Select User:", choices = unique(data$user_name)),
+      uiOutput("user_options")
+    ),
+    
+    mainPanel(
+      class = "main-panel",
+      uiOutput("user_summary"),
+      uiOutput("plots")
+    )
+  )
+)
+
+# Define server logic
+server <- function(input, output, session) {
+  
+  user_data <- reactive({
+    data %>% filter(user_name == input$user)
+  })
+  
+  output$user_options <- renderUI({
+    if (!is.null(input$user)) {
+      selectInput("summary_option", "Select Summary Option:", choices = c("Unique Items", "Average Performance", "Items Answered Correctly 3 Times", "Longest Streak", "Achievements on a Given Day", "Comparative Performance"))
+    }
+  })
+  
+  output$user_summary <- renderUI({
+    if (!is.null(input$summary_option)) {
+      switch(input$summary_option,
+             "Unique Items" = tableOutput("unique_items"),
+             "Average Performance" = plotOutput("avg_performance"),
+             "Items Answered Correctly 3 Times" = tableOutput("correct_items"),
+             "Longest Streak" = tableOutput("longest_streak"),
+             "Achievements on a Given Day" = dateInput("select_day", "Select a Day:"),
+             "Comparative Performance" = plotlyOutput("comparative_performance")
+      )
+    }
+  })
+  
+  output$unique_items <- renderTable({
+    user_data() %>%
+      summarise(unique_items = n_distinct(task))
+  })
+  
+  output$avg_performance <- renderPlot({
+    user_data() %>%
+      group_by(task) %>%
+      summarise(avg_performance = mean(performance)) %>%
+      ggplot(aes(x = task, y = avg_performance)) +
+      geom_bar(stat = "identity", fill = "#0275d8", color = "white") +
+      labs(title = "Average Performance per Task", x = "Task", y = "Average Performance") +
+      theme_minimal() +
+      theme(
+        plot.title = element_text(hjust = 0.5, color = "#0275d8", size = 18, face = "bold"),
+        axis.title = element_text(color = "#0275d8"),
+        axis.text = element_text(color = "#0275d8"),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        text = element_text(family = 'Montserrat')
+      )
+  })
+  
+  output$correct_items <- renderTable({
+    user_data() %>%
+      group_by(eng_id) %>%
+      summarise(correct_times = sum(performance)) %>%
+      filter(correct_times >= 3)
+  })
+  
+  output$longest_streak <- renderTable({
+    streak_data <- user_data() %>%
+      group_by(date) %>%
+      summarise(daily_interaction = n())
+    
+    streak_data <- streak_data %>%
+      mutate(streak = cumsum(c(1, diff(as.Date(date)) != 1)))
+    
+    streak_length <- streak_data %>%
+      group_by(streak) %>%
+      summarise(length = n()) %>%
+      summarise(max_streak = max(length))
+    
+    streak_length
+  })
+  
+  output$achievements <- renderTable({
+    if (!is.null(input$select_day)) {
+      user_data() %>%
+        filter(date == input$select_day) %>%
+        select(task, performance)
+    }
+  })
+  
+  output$comparative_performance <- renderPlotly({
+    comparative_data <- data %>%
+      group_by(user_name, task) %>%
+      summarise(avg_performance = mean(performance)) %>%
+      ungroup()
+    
+    # Use a more vibrant color palette
+    colors <- RColorBrewer::brewer.pal(n = 8, name = "Set1")
+    
+    # Create the plot
+    plot <- plot_ly(comparative_data, x = ~task, y = ~avg_performance, color = ~user_name, colors = colors, type = 'scatter', mode = 'lines+markers', line = list(width = 2), marker = list(size = 8)) %>%
+      layout(title = "Comparative Performance of All Users",
+             xaxis = list(title = "Task", tickangle = 45), # Rotate x-axis labels for better readability
+             yaxis = list(title = "Average Performance"),
+             legend = list(title = list(text = 'User Name')),
+             margin = list(l = 50, r = 50, t = 50, b = 100) # Increase margins for better spacing
+      ) %>%
+      highlight(on = "plotly_hover", off = "plotly_doubleclick",
+                color = "rgba(0,0,0,0.1)", # Dim color for non-hovered lines
+                selected = list(marker = list(size = 12))) # Larger marker on hover
+    
+    plot
+  })
+  
+  output$plots <- renderUI({
+    if (input$summary_option == "Achievements on a Given Day") {
+      tableOutput("achievements")
+    }
+  })
+}
+
+# Run the application
+shinyApp(ui = ui, server = server)
