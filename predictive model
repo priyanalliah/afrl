@@ -1,0 +1,79 @@
+import pandas as pd
+from datetime import datetime
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+
+# Load the data
+file_path = './DLI_data_export_for_Priya.csv'
+data = pd.read_csv(file_path)
+data['date'] = pd.to_datetime(data['date'])
+data.ffill(inplace=True)
+
+# Feature engineering
+data['attempts'] = data.groupby(['user_name', 'eng_trans']).cumcount() + 1
+data['wrong_attempts'] = data.groupby(['user_name', 'eng_trans'])['performance'].transform(lambda x: (x == 0).cumsum())
+data['days_to_master'] = (data['date'] - data.groupby(['user_name', 'eng_trans'])['date'].transform('first')).dt.days
+data['avg_performance'] = data.groupby(['user_name', 'eng_trans'])['performance'].transform('mean')
+
+# Filter for records where the word has been mastered
+mastered_data = data[data['performance'] == True]
+
+# Prepare features and target variable
+features = ['wrong_attempts', 'avg_performance']
+X = mastered_data[features]
+y = mastered_data['attempts']
+
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Train a linear regression model
+model = LinearRegression()
+model.fit(X_train, y_train)
+
+# Evaluate the model
+y_pred = model.predict(X_test)
+mse = mean_squared_error(y_test, y_pred)
+print(f"Model trained successfully with MSE: {mse}")
+
+# Function to predict the additional practices needed
+def get_top_15_words_to_practice(user_name):
+    user_data = data[data['user_name'] == user_name]
+    if not user_data.empty:
+        # Calculate the number of wrong attempts
+        user_data['wrong_attempts'] = user_data.groupby('eng_trans')['performance'].transform(lambda x: (x == 0).cumsum())
+
+        # Calculate average performance
+        user_data['avg_performance'] = user_data.groupby('eng_trans')['performance'].transform('mean')
+
+        # Find the words the user struggled with the most
+        struggled_words = user_data[user_data['performance'] == 0]
+        struggled_words = struggled_words.groupby(['eng_trans', 'foreign_trans']).agg({
+            'wrong_attempts': 'max',
+            'avg_performance': 'mean',
+            'attempts': 'max'
+        }).reset_index()
+
+        # Get the top 15 struggled words
+        top_15_struggled_words = struggled_words.sort_values(by='wrong_attempts', ascending=False).head(15)
+
+        # Prepare the input features for prediction
+        X_top_15 = top_15_struggled_words[features]
+
+        # Predict the total attempts needed for each word
+        top_15_struggled_words['total_attempts_needed'] = model.predict(X_top_15)
+
+        # Calculate additional practices needed
+        top_15_struggled_words['additional_practices_needed'] = top_15_struggled_words['total_attempts_needed'] - top_15_struggled_words['attempts']
+        top_15_struggled_words['additional_practices_needed'] = top_15_struggled_words['additional_practices_needed'].apply(lambda x: max(0, round(x)))
+
+        print("Top 15 words you struggled with and estimated additional practices needed to master each word:")
+        for idx, row in top_15_struggled_words.iterrows():
+            print(f"- {row['eng_trans']} ({row['foreign_trans']}): {row['additional_practices_needed']} more practices")
+    else:
+        print("No data found for the user.")
+
+# Example usage
+if __name__ == '__main__':
+    user_name = input("Enter User Name: ")
+    get_top_15_words_to_practice(user_name)
